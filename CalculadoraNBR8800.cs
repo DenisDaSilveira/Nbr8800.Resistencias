@@ -95,6 +95,13 @@ namespace Nbr8800.Resistencias
         {
             Validar(s, m);
             if (p == null) throw new ArgumentNullException(nameof(p));
+            // Não permitir que o sentinela 1E20 entre nas fórmulas físicas de FLT.
+            double lbEfetivo = ResolverLbFlt(p);
+            var parametrosFlt = new ParametrosFlexao
+            {
+                Eixo = p.Eixo, Lb = lbEfetivo, Cb = p.Cb,
+                McrAlternativo = p.McrAlternativo, Wef = p.Wef
+            };
             double w = p.Eixo == EixoFlexao.X ? s.Wx : s.Wy;
             double z = p.Eixo == EixoFlexao.X ? s.Zx : s.Zy;
             double mpl = z * m.Fy;
@@ -111,12 +118,18 @@ namespace Nbr8800.Resistencias
             {
                 limites[EstadoLimite.EscoamentoSecaoBruta] = mpl / m.GammaA1;
                 AdicionarFlambagemLocal(s, m, p, w, mpl, limites);
-                AdicionarFlt(s, m, p, w, mpl, limites);
+                AdicionarFlt(s, m, parametrosFlt, w, mpl, limites);
             }
 
             var gov = limites.OrderBy(x => x.Value).First();
             var r = Novo(gov.Value, gov.Key);
             foreach (var x in limites) r.Valores[x.Key.ToString()] = x.Value;
+            r.Valores["LbFLT_Utilizado"] = lbEfetivo;
+            r.Valores["FLT_Considerada"] = lbEfetivo > 0 ? 1.0 : 0.0;
+            r.Memoria.Add(lbEfetivo > 0
+                ? "FLT: comprimento destravado utilizado = " + lbEfetivo.ToString("G17") + " (unidade do modelo)."
+                : "FLT desconsiderada por configuração; permanecem as demais verificações de flexão.");
+
             r.Memoria.Add("5.4.2 e Anexo D: MRd é o menor valor dos estados-limites aplicáveis.");
             if ((s.Tipo == TipoSecao.IouHDuplaSimetria || s.Tipo == TipoSecao.IouHMonossimetrica) && s.H / s.Tw > 5.70 * Math.Sqrt(m.E / m.Fy))
                 r.Avisos.Add("Alma esbelta: dimensionar também pelo Anexo E; o resultado do Anexo D não é suficiente.");
@@ -575,6 +588,20 @@ namespace Nbr8800.Resistencias
                 double mn = lambda <= lp ? mpl : lambda <= lr ? mpl - (mpl - m.Fy * wef) * (3.57 * lambda * Math.Sqrt(m.Fy / m.E) - 4.0) : m.Fy * wef;
                 d[EstadoLimite.FLM] = mn / m.GammaA1;
             }
+        }
+
+        private static double ResolverLbFlt(ParametrosFlexao p)
+        {
+            if (p == null) throw new ArgumentNullException(nameof(p));
+            if (p.ModoLb == ModoComprimentoFlt.Desconsiderar) return 0;
+            double lb = p.ModoLb == ModoComprimentoFlt.Automatico ? p.LbCalculadoMembros : p.Lb;
+            if (double.IsNaN(lb) || double.IsInfinity(lb) || lb < 0)
+                throw new ArgumentOutOfRangeException(nameof(p.Lb), "Comprimento destravado inválido.");
+            if (lb >= 1.0E+20)
+                throw new ArgumentException("Sentinela 1E20 não é comprimento físico. Resolva o comprimento destravado dos membros antes de dimensionar.");
+            if ((p.ModoLb == ModoComprimentoFlt.Manual || p.ModoLb == ModoComprimentoFlt.Automatico) && lb <= 0)
+                throw new ArgumentException("FLT manual/automática exige comprimento destravado positivo.");
+            return lb;
         }
 
         private static void AdicionarFlt(SecaoMetalica s, MaterialAco m, ParametrosFlexao p, double w, double mpl, IDictionary<EstadoLimite, double> d)
