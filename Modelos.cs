@@ -128,10 +128,24 @@ namespace Nbr8800.Resistencias
         public IList<string> Memoria { get; } = new List<string>();
     }
 
+    /// <summary>Seleção explícita do comprimento destravado para FLT.</summary>
+    public enum ModoComprimentoFlt
+    {
+        /// <summary>Compatibilidade com chamadas existentes: Lb=0 ignora FLT.</summary>
+        Legado = 0,
+        Desconsiderar = 1,
+        Automatico = 2,
+        Manual = 3
+    }
+
     public sealed class ParametrosFlexao
     {
         public EixoFlexao Eixo { get; set; }
         public double Lb { get; set; }
+        /// <summary>Modo de determinação de Lb. Em Automático, informar LbCalculadoMembros.</summary>
+        public ModoComprimentoFlt ModoLb { get; set; } = ModoComprimentoFlt.Legado;
+        /// <summary>Comprimento destravado resolvido pelo modelo, na mesma unidade de Lb.</summary>
+        public double LbCalculadoMembros { get; set; }
         public double Cb { get; set; } = 1.0;
         /// <summary>Mcr alternativo obtido por análise elástica. Zero usa fórmula implementada quando disponível.</summary>
         public double McrAlternativo { get; set; }
